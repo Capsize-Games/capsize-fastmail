@@ -8,11 +8,19 @@ from capsize_fastmail.provider import EmailMessage
 
 
 def parse_header_contacts(raw: Any) -> list[dict[str, str]]:
-    """Normalise a JMAP EmailAddress array to a list of dicts."""
+    """Normalise a JMAP EmailAddress array to a list of dicts.
+
+    ``dict.get(key, "")`` only falls back to the default when the key
+    is *absent* - real JMAP messages can send an explicit ``"name":
+    null`` (a contact with no display name), which `.get` happily
+    returns as `None`, not `""`. `or ""` catches both cases so this
+    never hands back something other than `str`, matching
+    `EmailMessage`'s own declared (non-Optional) field types.
+    """
     if not raw or not isinstance(raw, list):
         return []
     return [
-        {"address": c.get("email", ""), "name": c.get("name", "")}
+        {"address": c.get("email") or "", "name": c.get("name") or ""}
         for c in raw
     ]
 
@@ -88,7 +96,7 @@ def parse_email(
 
     return EmailMessage(
         provider_id=em["id"],
-        thread_id=em.get("threadId", ""),
+        thread_id=em.get("threadId") or "",
         mailbox_role=_resolve_mailbox_role(em, mailbox_roles),
         from_address=from_addr,
         from_name=from_name,

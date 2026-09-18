@@ -17,6 +17,21 @@ def test_parse_header_contacts_normalizes() -> None:
     ]
 
 
+def test_parse_header_contacts_coerces_explicit_null_name() -> None:
+    """`{"name": null}` is real, observed JMAP output.
+
+    A contact with no display name, distinct from the key being
+    absent - `dict.get(key, default)` does NOT fall back to `default`
+    for an explicit `null` value, only a missing key. Confirmed live:
+    this crashed a real sync with a NOT NULL constraint failure before
+    the fix, since `None` isn't a `str`.
+    """
+    raw = [{"email": "a@example.com", "name": None}]
+    assert parse_header_contacts(raw) == [
+        {"address": "a@example.com", "name": ""}
+    ]
+
+
 def test_parse_body_resolves_body_values() -> None:
     em = {
         "textBody": [{"partId": "1"}],
