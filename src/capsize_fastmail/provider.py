@@ -39,11 +39,19 @@ class EmailMessage:
 
 @dataclass
 class Page:
-    """One page of email IDs from a paginated query."""
+    """One page of email IDs from a paginated query.
+
+    ``query_state`` is JMAP's state token for the Email data type at
+    query time - the same token format ``EmailProvider.get_changes``
+    takes as ``since_state``. Capturing it here is what lets a caller
+    bootstrap delta sync after an initial full backfill, without a
+    separate call just to fetch a state token.
+    """
 
     ids: list[str]
     position: int = 0
     total: int | None = None
+    query_state: str | None = None
 
 
 @dataclass

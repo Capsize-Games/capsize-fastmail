@@ -203,6 +203,7 @@ class FastmailJMAPProvider(EmailProvider):
             ids=args.get("ids", []),
             position=args.get("position", position),
             total=args.get("total"),
+            query_state=args.get("queryState"),
         )
 
     async def get_emails(

@@ -88,6 +88,37 @@ async def test_list_mailboxes_skips_trash_and_junk() -> None:
     assert provider.account_id == "acct-1"
 
 
+async def test_query_email_ids_captures_query_state() -> None:
+    session_cm = _mock_async_client(
+        get_response=_fake_response(200, _SESSION_BODY)
+    )
+    query_body = {
+        "methodResponses": [
+            [
+                "Email/query",
+                {
+                    "ids": ["e1", "e2"],
+                    "position": 0,
+                    "total": 2,
+                    "queryState": "state-abc",
+                },
+                "eq_0",
+            ],
+        ]
+    }
+    post_cm = _mock_async_client(
+        post_response=_fake_response(200, query_body)
+    )
+    provider = FastmailJMAPProvider("token")
+    with patch(
+        "capsize_fastmail.client.httpx.AsyncClient",
+        side_effect=[session_cm, post_cm],
+    ):
+        page = await provider.query_email_ids("mbx-1")
+    assert page.ids == ["e1", "e2"]
+    assert page.query_state == "state-abc"
+
+
 async def test_call_raises_on_error_response() -> None:
     session_cm = _mock_async_client(
         get_response=_fake_response(200, _SESSION_BODY)
