@@ -9,8 +9,8 @@ see `README.md` for the deployment recipe.
 
 Env vars:
     FASTMAIL_API_TOKEN   required - a Mail-scoped JMAP API token.
-    FASTMAIL_SYNC_DB      optional - defaults to
-                          ~/.local/share/capsize-fastmail/fastmail.db
+    FASTMAIL_SYNC_DB      optional - defaults to a per-user data
+                          directory (see `_default_db_path`).
 """
 
 from __future__ import annotations
@@ -37,7 +37,18 @@ from capsize_fastmail.concurrency import BATCH_SIZE  # noqa: E402
 
 logger = logging.getLogger("capsize_fastmail.sync_local")
 
-_DEFAULT_DB = "~/.local/share/capsize-fastmail/fastmail.db"
+
+def _default_db_path() -> str:
+    """Return a per-user data directory, not any one deployment's own.
+
+    Respects `$XDG_DATA_HOME` when set, matching the convention most
+    Linux tools follow for this.
+    """
+    default_home = str(Path.home() / ".local" / "share")
+    base = os.environ.get("XDG_DATA_HOME", default_home)
+    return str(Path(base) / "capsize-fastmail" / "fastmail.db")
+
+
 # Matches capsize_fastmail.concurrency.BATCH_SIZE - this script calls
 # provider.get_emails() directly (it's already async end-to-end, so
 # the sync fetch_email_bodies helper - which spins up its own event
@@ -167,7 +178,9 @@ def main() -> int:
     if not token:
         logger.error("FASTMAIL_API_TOKEN is not set")
         return 1
-    db_path = Path(os.environ.get("FASTMAIL_SYNC_DB", _DEFAULT_DB))
+    db_path = Path(
+        os.environ.get("FASTMAIL_SYNC_DB", _default_db_path())
+    )
     return asyncio.run(_run(token, db_path))
 
 
