@@ -1,0 +1,12 @@
+line-length = 79
+target-version = "py311"
+
+[lint]
+select = ["A", "ANN", "B", "C4", "D", "E", "F", "I", "N", "RET", "SIM", "UP", "W"]
+# ANN401: this client's boundary is raw decoded JMAP JSON, which is
+# genuinely dynamically shaped; every such function narrows with
+# isinstance immediately rather than trusting the Any through.
+ignore = ["D203", "D213", "ANN401"]
+
+[lint.per-file-ignores]
+"tests/*" = ["D100", "D103"]
