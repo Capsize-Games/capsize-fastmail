@@ -102,6 +102,40 @@ if not classify_automated(msg):  # skip receipts/newsletters/etc.
 Both subclass `FastmailError`, so callers that don't care about the
 distinction can catch just that.
 
+## Local mirror (`scripts/sync_local.py`)
+
+A standalone script - deliberately outside the `capsize_fastmail`
+package itself, which stays database-free by design (see above) -
+that mirrors the whole account into a local SQLite database. First
+run does a full backfill of every mailbox; every run after that uses
+JMAP delta sync (`Email/changes`) to fetch only what changed, so it's
+safe to run often.
+
+```bash
+export FASTMAIL_API_TOKEN=...          # required, Mail-scoped
+export FASTMAIL_SYNC_DB=/path/to.db    # optional, see the script for the default
+python scripts/sync_local.py
+```
+
+Each stored message carries a real `mailbox_role` (`sent`, `inbox`,
+`drafts`, ...) resolved from `list_mailboxes()`, so a downstream
+consumer can select e.g. only sent mail (the account owner's own
+writing) without touching anything received from someone else.
+
+### Running on a schedule
+
+This is a plain script with a normal process exit code (`0` success,
+`1` failure) - any scheduler works. A user crontab entry is the
+simplest option for a personal machine:
+
+```cron
+*/30 * * * * FASTMAIL_API_TOKEN=... /path/to/.venv/bin/python /path/to/capsize-fastmail/scripts/sync_local.py >> /path/to/sync.log 2>&1
+```
+
+Keep the token out of the crontab line itself in practice - source it
+from a file with `. /path/to/.env &&` prefixed to the command, or use
+a systemd user timer with `EnvironmentFile=` instead.
+
 ## Extending to another provider
 
 `EmailProvider` (in `capsize_fastmail.provider`) is the four-method
