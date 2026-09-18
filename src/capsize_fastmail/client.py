@@ -209,6 +209,7 @@ class FastmailJMAPProvider(EmailProvider):
         self,
         ids: list[str],
         include_body: bool = True,
+        mailbox_roles: dict[str, str] | None = None,
     ) -> list[EmailMessage]:
         """Fetch email objects for a batch of IDs.
 
@@ -216,6 +217,11 @@ class FastmailJMAPProvider(EmailProvider):
         (headers, no ``textBody``/``htmlBody``/``bodyValues``) - each
         body can be 100+KB, so skip it when the caller will fetch it
         again later anyway.
+
+        *mailbox_roles* (mailbox ID -> role, from ``list_mailboxes()``)
+        lets the returned messages report which mailbox they're in
+        (e.g. to tell sent mail from received mail) - omit it to leave
+        each message's ``mailbox_role`` blank.
         """
         if not ids:
             return []
@@ -239,7 +245,10 @@ class FastmailJMAPProvider(EmailProvider):
             args["fetchHTMLBodyValues"] = True
         result = await self._call([["Email/get", args, "eg_0"]])
         args = self._find_method_response(result, "Email/get")
-        return [parse_email(em) for em in args.get("list", [])]
+        return [
+            parse_email(em, mailbox_roles)
+            for em in args.get("list", [])
+        ]
 
     async def get_changes(self, since_state: str) -> Changes:
         """Return delta changes since the given JMAP state token."""

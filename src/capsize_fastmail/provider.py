@@ -82,7 +82,10 @@ class EmailProvider(ABC):
 
     @abstractmethod
     async def get_emails(
-        self, ids: list[str], include_body: bool = True
+        self,
+        ids: list[str],
+        include_body: bool = True,
+        mailbox_roles: dict[str, str] | None = None,
     ) -> list[EmailMessage]:
         """Fetch full email objects for a batch of IDs."""
         ...

@@ -44,9 +44,15 @@ _jmap_concurrency_semaphore = threading.Semaphore(
 
 
 def fetch_email_bodies(
-    provider: EmailProvider, ids: set[str]
+    provider: EmailProvider,
+    ids: set[str],
+    mailbox_roles: dict[str, str] | None = None,
 ) -> list[EmailMessage]:
-    """Fetch email bodies for one chunk, JMAP sub-batches concurrently."""
+    """Fetch email bodies for one chunk, JMAP sub-batches concurrently.
+
+    *mailbox_roles* is passed straight through to
+    ``provider.get_emails`` - see its docstring.
+    """
     fetch_list = list(ids)
     batches = [
         fetch_list[i:i + BATCH_SIZE]
@@ -55,7 +61,9 @@ def fetch_email_bodies(
     if not batches:
         return []
 
-    results = run_async(_gather_batches(provider, batches))
+    results = run_async(
+        _gather_batches(provider, batches, mailbox_roles)
+    )
     all_emails: list[EmailMessage] = []
     for batch_result in results:
         all_emails.extend(batch_result)
@@ -63,7 +71,9 @@ def fetch_email_bodies(
 
 
 async def _gather_batches(
-    provider: EmailProvider, batches: list[list[str]]
+    provider: EmailProvider,
+    batches: list[list[str]],
+    mailbox_roles: dict[str, str] | None,
 ) -> list[list[EmailMessage]]:
     """Fetch every batch concurrently on one event loop.
 
@@ -80,7 +90,9 @@ async def _gather_batches(
     ) -> list[EmailMessage]:
         await asyncio.to_thread(_jmap_concurrency_semaphore.acquire)
         try:
-            return await provider.get_emails(batch)
+            return await provider.get_emails(
+                batch, mailbox_roles=mailbox_roles
+            )
         finally:
             _jmap_concurrency_semaphore.release()
 

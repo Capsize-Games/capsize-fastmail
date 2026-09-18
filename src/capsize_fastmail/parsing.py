@@ -45,8 +45,41 @@ def parse_body(em: dict[str, Any]) -> tuple[str, str]:
     return text_body, html_body
 
 
-def parse_email(em: dict[str, Any]) -> EmailMessage:
-    """Convert one JMAP Email object to an ``EmailMessage``."""
+# A message can sit in more than one JMAP mailbox at once (e.g. a
+# custom label alongside Inbox); when that happens, prefer whichever
+# role best identifies *why* the message matters to a caller - sent
+# mail is the strongest signal (it is provably the account owner's
+# own writing), inbox next, then everything else in no particular
+# order.
+_ROLE_PRIORITY = ("sent", "inbox", "drafts", "archive")
+
+
+def _resolve_mailbox_role(
+    em: dict[str, Any], mailbox_roles: dict[str, str] | None
+) -> str:
+    if not mailbox_roles:
+        return ""
+    ids = em.get("mailboxIds")
+    if not isinstance(ids, dict):
+        return ""
+    roles = {mailbox_roles[i] for i in ids if i in mailbox_roles}
+    for preferred in _ROLE_PRIORITY:
+        if preferred in roles:
+            return preferred
+    return next(iter(roles), "")
+
+
+def parse_email(
+    em: dict[str, Any], mailbox_roles: dict[str, str] | None = None
+) -> EmailMessage:
+    """Convert one JMAP Email object to an ``EmailMessage``.
+
+    ``mailbox_roles`` maps a JMAP mailbox ID to its role (e.g. from
+    ``EmailProvider.list_mailboxes()``) - passed through so the
+    returned message can report which mailbox it actually lives in
+    (see ``_resolve_mailbox_role``). Omit it to leave ``mailbox_role``
+    blank, e.g. when the caller doesn't need it.
+    """
     from_list = parse_header_contacts(em.get("from"))
     from_addr = from_list[0]["address"] if from_list else ""
     from_name = from_list[0]["name"] if from_list else ""
@@ -56,7 +89,7 @@ def parse_email(em: dict[str, Any]) -> EmailMessage:
     return EmailMessage(
         provider_id=em["id"],
         thread_id=em.get("threadId", ""),
-        mailbox_role="",
+        mailbox_role=_resolve_mailbox_role(em, mailbox_roles),
         from_address=from_addr,
         from_name=from_name,
         to_addresses=parse_header_contacts(em.get("to")),

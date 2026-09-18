@@ -70,3 +70,26 @@ def test_parse_email_falls_back_to_received_at() -> None:
     assert msg.sent_at == "2026-02-02T00:00:00Z"
     assert msg.from_address == ""
     assert msg.from_name == ""
+
+
+def test_parse_email_resolves_mailbox_role() -> None:
+    em = {"id": "msg-3", "threadId": "t-3", "mailboxIds": {"mb-1": True}}
+    msg = parse_email(em, mailbox_roles={"mb-1": "sent"})
+    assert msg.mailbox_role == "sent"
+
+
+def test_parse_email_without_mailbox_roles_is_blank() -> None:
+    em = {"id": "msg-4", "threadId": "t-4", "mailboxIds": {"mb-1": True}}
+    assert parse_email(em).mailbox_role == ""
+
+
+def test_parse_email_prefers_sent_over_other_roles() -> None:
+    em = {
+        "id": "msg-5",
+        "threadId": "t-5",
+        "mailboxIds": {"mb-1": True, "mb-2": True},
+    }
+    msg = parse_email(
+        em, mailbox_roles={"mb-1": "archive", "mb-2": "sent"}
+    )
+    assert msg.mailbox_role == "sent"
