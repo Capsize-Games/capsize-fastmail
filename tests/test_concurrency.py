@@ -50,6 +50,9 @@ class _FakeProvider(EmailProvider):
     async def get_changes(self, since_state: str) -> Changes:
         return Changes()
 
+    async def get_current_state(self) -> str:
+        return ""
+
 
 def _ids(messages: list[EmailMessage]) -> list[str]:
     return [m.provider_id for m in messages]

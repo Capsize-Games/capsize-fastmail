@@ -271,9 +271,31 @@ class FastmailJMAPProvider(EmailProvider):
             ],
         ])
         args = self._find_method_response(result, "Email/changes")
+        return self._changes_from_args(args)
+
+    @staticmethod
+    def _changes_from_args(args: dict[str, Any]) -> Changes:
         return Changes(
             created=args.get("created", []),
             updated=args.get("updated", []),
             destroyed=args.get("destroyed", []),
             new_state=args.get("newState", ""),
         )
+
+    async def get_current_state(self) -> str:
+        """Return the account's current Email-type state token.
+
+        An ``Email/get`` call with no IDs still returns the type's
+        current ``state`` at essentially no cost (an empty ``list``)
+        - the correct way to seed a first ``get_changes`` call. See
+        ``Page.query_state``'s docstring for why that field isn't a
+        substitute for this.
+        """
+        await self._ensure_session()
+        result = await self._call(
+            [["Email/get", {
+                "accountId": self._account_id, "ids": [],
+            }, "eg_state"]]
+        )
+        args = self._find_method_response(result, "Email/get")
+        return str(args.get("state", ""))

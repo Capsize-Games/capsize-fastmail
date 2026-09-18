@@ -73,20 +73,13 @@ async def _backfill_mailbox(
     conn: sqlite3.Connection,
     mailbox_id: str,
     mailbox_roles: dict[str, str],
-) -> str | None:
-    """Page through one mailbox, storing every message.
-
-    Returns the last `query_state` seen - any mailbox's works as the
-    seed for delta sync, since it's a token for the whole Email data
-    type, not a per-mailbox one.
-    """
+) -> None:
+    """Page through one mailbox, storing every message."""
     position = 0
-    last_state: str | None = None
     while True:
         page = await provider.query_email_ids(
             mailbox_id, position=position, limit=_PAGE_SIZE
         )
-        last_state = page.query_state or last_state
         if not page.ids:
             break
         await _store_page(
@@ -95,25 +88,25 @@ async def _backfill_mailbox(
         if len(page.ids) < _PAGE_SIZE:
             break
         position += _PAGE_SIZE
-    return last_state
 
 
 async def _full_backfill(
     provider: FastmailJMAPProvider, conn: sqlite3.Connection
 ) -> None:
+    # Captured *before* reading any mail, not after: any change that
+    # lands mid-backfill is then guaranteed to show up on the very
+    # next delta sync instead of silently falling in the gap between
+    # "when we started reading" and "when we finished."
+    state = await provider.get_current_state()
     mailboxes = await provider.list_mailboxes()
     mailbox_roles = {mb.id: mb.role for mb in mailboxes}
-    last_state: str | None = None
     for mailbox in mailboxes:
-        state = await _backfill_mailbox(
-            provider, conn, mailbox.id, mailbox_roles
-        )
-        last_state = state or last_state
-    if last_state:
-        _storage.set_sync_state(conn, last_state)
+        await _backfill_mailbox(provider, conn, mailbox.id, mailbox_roles)
+    if state:
+        _storage.set_sync_state(conn, state)
     else:
         logger.warning(
-            "backfill finished but no queryState was returned - "
+            "backfill finished but no state token was returned - "
             "delta sync cannot resume from this run"
         )
 

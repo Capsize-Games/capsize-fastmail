@@ -33,6 +33,7 @@ def _provider(**overrides: object) -> AsyncMock:
         Mailbox(id="mb-1", name="Inbox", role="inbox"),
         Mailbox(id="mb-2", name="Sent", role="sent"),
     ]
+    provider.get_current_state.return_value = "state-final"
     for name, value in overrides.items():
         getattr(provider, name).return_value = value
     return provider
@@ -42,12 +43,9 @@ async def test_full_backfill_pages_until_short_page(
     conn: sqlite3.Connection,
 ) -> None:
     provider = _provider()
-    full_page = Page(
-        ids=[f"id-{i}" for i in range(sync_local._PAGE_SIZE)],
-        query_state="state-mid",
-    )
-    short_page = Page(ids=["id-last"], query_state="state-final")
-    empty_page = Page(ids=[], query_state="state-final")
+    full_page = Page(ids=[f"id-{i}" for i in range(sync_local._PAGE_SIZE)])
+    short_page = Page(ids=["id-last"])
+    empty_page = Page(ids=[])
     provider.query_email_ids.side_effect = [
         full_page, short_page,  # mailbox 1
         empty_page,  # mailbox 2
@@ -56,7 +54,10 @@ async def test_full_backfill_pages_until_short_page(
 
     await sync_local._full_backfill(provider, conn)
 
+    # Seeded from get_current_state(), NOT Page.query_state - see its
+    # docstring for why those aren't interchangeable.
     assert _storage.get_sync_state(conn) == "state-final"
+    assert provider.get_current_state.await_count == 1
     assert provider.query_email_ids.call_count == 3
 
 

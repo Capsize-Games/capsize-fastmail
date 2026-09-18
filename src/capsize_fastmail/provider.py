@@ -41,11 +41,16 @@ class EmailMessage:
 class Page:
     """One page of email IDs from a paginated query.
 
-    ``query_state`` is JMAP's state token for the Email data type at
-    query time - the same token format ``EmailProvider.get_changes``
-    takes as ``since_state``. Capturing it here is what lets a caller
-    bootstrap delta sync after an initial full backfill, without a
-    separate call just to fetch a state token.
+    ``query_state`` reflects whether *this specific query's* result
+    set (matching IDs/order) has changed - useful for detecting an
+    inconsistent read across pages of the same paginated query. It is
+    NOT reliably interchangeable with the state token
+    ``EmailProvider.get_changes`` takes as ``since_state`` - confirmed
+    live against a real Fastmail (Cyrus) server, which decorates this
+    value with query-specific metadata (e.g. ``"J977974:0"`` here vs.
+    the bare ``"J977974"`` ``get_current_state()`` returns) and
+    rejects the decorated form with ``cannotCalculateChanges``. Use
+    ``get_current_state()`` to seed delta sync instead.
     """
 
     ids: list[str]
@@ -101,4 +106,16 @@ class EmailProvider(ABC):
     @abstractmethod
     async def get_changes(self, since_state: str) -> Changes:
         """Return delta changes since the given state token."""
+        ...
+
+    @abstractmethod
+    async def get_current_state(self) -> str:
+        """Return the account's current Email-type state token.
+
+        This is the right seed for a first ``get_changes`` call - it
+        is NOT the same token format as a ``Page.query_state`` (some
+        servers decorate that one with query-specific metadata that
+        ``get_changes`` then rejects), even though both nominally
+        describe "the current state."
+        """
         ...

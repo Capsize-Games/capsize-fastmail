@@ -205,3 +205,29 @@ async def test_get_changes_returns_empty_for_no_state() -> None:
     changes = await provider.get_changes("")
     assert changes.created == []
     assert changes.new_state == ""
+
+
+async def test_get_current_state_returns_bare_state_token() -> None:
+    """Deliberately distinct from a Page's `query_state`.
+
+    Real Fastmail returns e.g. `"J977974"` here vs. `"J977974:0"`
+    from `Email/query`, and only the bare form works as
+    `get_changes`'s `since_state` (see `Page.query_state`'s
+    docstring).
+    """
+    session_cm = _mock_async_client(
+        get_response=_fake_response(200, _SESSION_BODY)
+    )
+    get_body = {
+        "methodResponses": [
+            ["Email/get", {"list": [], "state": "J977974"}, "eg_state"],
+        ]
+    }
+    post_cm = _mock_async_client(post_response=_fake_response(200, get_body))
+    provider = FastmailJMAPProvider("token")
+    with patch(
+        "capsize_fastmail.client.httpx.AsyncClient",
+        side_effect=[session_cm, post_cm],
+    ):
+        state = await provider.get_current_state()
+    assert state == "J977974"
