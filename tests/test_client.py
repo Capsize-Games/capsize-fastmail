@@ -88,6 +88,46 @@ async def test_list_mailboxes_skips_trash_and_junk() -> None:
     assert provider.account_id == "acct-1"
 
 
+async def test_list_mailboxes_sends_resolved_account_id() -> None:
+    """Every public method used to build its JMAP payload before ready.
+
+    Reading `self._account_id` before `_call` had a chance to resolve
+    the session and populate that field meant a fresh provider's very
+    first call sent `accountId: null` to Fastmail - caught live
+    against a real account, not by this suite, since no existing test
+    asserted on the outgoing request body.
+    """
+    session_client = AsyncMock()
+    session_client.get.return_value = _fake_response(200, _SESSION_BODY)
+    session_cm = MagicMock()
+    session_cm.__aenter__.return_value = session_client
+    session_cm.__aexit__.return_value = None
+
+    post_client = AsyncMock()
+    post_client.post.return_value = _fake_response(
+        200,
+        {
+            "methodResponses": [
+                ["Mailbox/get", {"list": []}, "mb_0"],
+            ]
+        },
+    )
+    post_cm = MagicMock()
+    post_cm.__aenter__.return_value = post_client
+    post_cm.__aexit__.return_value = None
+
+    provider = FastmailJMAPProvider("token")
+    with patch(
+        "capsize_fastmail.client.httpx.AsyncClient",
+        side_effect=[session_cm, post_cm],
+    ):
+        await provider.list_mailboxes()
+
+    sent_body = post_client.post.call_args.kwargs["json"]
+    sent_account_id = sent_body["methodCalls"][0][1]["accountId"]
+    assert sent_account_id == "acct-1"
+
+
 async def test_query_email_ids_captures_query_state() -> None:
     session_cm = _mock_async_client(
         get_response=_fake_response(200, _SESSION_BODY)

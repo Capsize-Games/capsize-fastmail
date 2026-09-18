@@ -165,6 +165,7 @@ class FastmailJMAPProvider(EmailProvider):
 
     async def list_mailboxes(self) -> list[Mailbox]:
         """Return every mailbox with its role, skipping trash/junk."""
+        await self._ensure_session()
         result = await self._call(
             [["Mailbox/get", {"accountId": self._account_id}, "mb_0"]]
         )
@@ -187,6 +188,7 @@ class FastmailJMAPProvider(EmailProvider):
         Requests ``calculateTotal`` so callers can report accurate
         progress against the mailbox's true size.
         """
+        await self._ensure_session()
         result = await self._call([
             ["Email/query", {
                 "accountId": self._account_id,
@@ -226,6 +228,7 @@ class FastmailJMAPProvider(EmailProvider):
         """
         if not ids:
             return []
+        await self._ensure_session()
         properties = [
             "id", "threadId", "mailboxIds",
             "from", "to", "cc", "bcc",
@@ -255,6 +258,7 @@ class FastmailJMAPProvider(EmailProvider):
         """Return delta changes since the given JMAP state token."""
         if not since_state:
             return Changes()
+        await self._ensure_session()
         result = await self._call([
             [
                 "Email/changes",
