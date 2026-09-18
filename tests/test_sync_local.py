@@ -4,7 +4,6 @@ import sqlite3
 import sys
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
@@ -40,7 +39,7 @@ def _provider(**overrides: object) -> AsyncMock:
 
 
 async def test_full_backfill_pages_until_short_page(
-    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+    conn: sqlite3.Connection,
 ) -> None:
     provider = _provider()
     full_page = Page(
@@ -53,9 +52,7 @@ async def test_full_backfill_pages_until_short_page(
         full_page, short_page,  # mailbox 1
         empty_page,  # mailbox 2
     ]
-    monkeypatch.setattr(
-        sync_local, "fetch_email_bodies", lambda *a, **k: []
-    )
+    provider.get_emails.return_value = []
 
     await sync_local._full_backfill(provider, conn)
 
@@ -64,7 +61,7 @@ async def test_full_backfill_pages_until_short_page(
 
 
 async def test_delta_sync_upserts_and_deletes(
-    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+    conn: sqlite3.Connection,
 ) -> None:
     provider = _provider(
         get_changes=Changes(
@@ -74,6 +71,7 @@ async def test_delta_sync_upserts_and_deletes(
             new_state="state-next",
         )
     )
+    provider.get_emails.return_value = []
     _storage.upsert_messages(
         conn,
         [EmailMessage(
@@ -82,19 +80,11 @@ async def test_delta_sync_upserts_and_deletes(
         )],
         "2026-01-01T00:00:00Z",
     )
-    captured_ids: list[set[str]] = []
-
-    def _fake_fetch(
-        _provider: object, ids: set[str], **_kwargs: Any
-    ) -> list[object]:
-        captured_ids.append(ids)
-        return []
-
-    monkeypatch.setattr(sync_local, "fetch_email_bodies", _fake_fetch)
 
     await sync_local._delta_sync(provider, conn, "state-prev")
 
-    assert captured_ids == [{"new-1", "upd-1"}]
+    captured_ids = provider.get_emails.call_args.args[0]
+    assert set(captured_ids) == {"new-1", "upd-1"}
     assert _storage.message_count(conn) == 0
     assert _storage.get_sync_state(conn) == "state-next"
 

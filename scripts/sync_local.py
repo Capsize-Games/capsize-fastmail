@@ -33,20 +33,26 @@ from capsize_fastmail import (  # noqa: E402
     FastmailAuthError,
     FastmailJMAPProvider,
 )
-from capsize_fastmail.concurrency import fetch_email_bodies  # noqa: E402
-from capsize_fastmail.provider import EmailMessage  # noqa: E402
+from capsize_fastmail.concurrency import BATCH_SIZE  # noqa: E402
 
 logger = logging.getLogger("capsize_fastmail.sync_local")
 
 _DEFAULT_DB = "~/.local/share/capsize-fastmail/fastmail.db"
-_PAGE_SIZE = 500
+# Matches capsize_fastmail.concurrency.BATCH_SIZE - this script calls
+# provider.get_emails() directly (it's already async end-to-end, so
+# the sync fetch_email_bodies helper - which spins up its own event
+# loop for non-async callers like a Celery task - doesn't apply here
+# and would fail inside one that's already running). One page is one
+# JMAP request, so it needs to respect the same per-request limit
+# fetch_email_bodies's own batching exists to stay under.
+_PAGE_SIZE = BATCH_SIZE
 
 
 def _now() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
 
-def _store_page(
+async def _store_page(
     provider: FastmailJMAPProvider,
     conn: sqlite3.Connection,
     ids: list[str],
@@ -54,9 +60,7 @@ def _store_page(
     mailbox_id: str,
     position: int,
 ) -> None:
-    messages = fetch_email_bodies(
-        provider, set(ids), mailbox_roles=mailbox_roles
-    )
+    messages = await provider.get_emails(ids, mailbox_roles=mailbox_roles)
     _storage.upsert_messages(conn, messages, _now())
     logger.info(
         "backfilled %d messages (mailbox %s, position %d)",
@@ -85,7 +89,7 @@ async def _backfill_mailbox(
         last_state = page.query_state or last_state
         if not page.ids:
             break
-        _store_page(
+        await _store_page(
             provider, conn, page.ids, mailbox_roles, mailbox_id, position
         )
         if len(page.ids) < _PAGE_SIZE:
@@ -122,10 +126,11 @@ async def _delta_sync(
     mailboxes = await provider.list_mailboxes()
     mailbox_roles = {mb.id: mb.role for mb in mailboxes}
     changes = await provider.get_changes(since_state)
-    changed_ids = set(changes.created) | set(changes.updated)
-    if changed_ids:
-        messages: list[EmailMessage] = fetch_email_bodies(
-            provider, changed_ids, mailbox_roles=mailbox_roles
+    changed_ids = list(set(changes.created) | set(changes.updated))
+    for i in range(0, len(changed_ids), BATCH_SIZE):
+        batch = changed_ids[i:i + BATCH_SIZE]
+        messages = await provider.get_emails(
+            batch, mailbox_roles=mailbox_roles
         )
         _storage.upsert_messages(conn, messages, _now())
     _storage.delete_messages(conn, changes.destroyed)
